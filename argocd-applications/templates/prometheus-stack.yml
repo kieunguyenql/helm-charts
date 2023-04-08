@@ -5,10 +5,10 @@ metadata:
   namespace: kube-controller
 spec:
   destination:
-    namespace: kube-system
+    namespace: kube-controller
     server: {{ .Values.spec.destination.server }}
   project: default
   source:
     path: kube-prometheus-stack-45.6.0
-    repoURL: https://github.com/kieunguyenql/helm-charts
+    repoURL: git@github.com:kieunguyenql/helm-charts.git
     targetRevision: main
