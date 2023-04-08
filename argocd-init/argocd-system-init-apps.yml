@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: argocd-applications-management
+  name: argocd-system-applications-mgt
   namespace: kube-controller
 spec:
   destination:
