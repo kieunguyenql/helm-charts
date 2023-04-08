@@ -39,9 +39,9 @@ defaultRules:
     general: true
     k8s: true
     kubeApiserverAvailability: true
-    kubeApiserverBurnrate: true
-    kubeApiserverHistogram: true
-    kubeApiserverSlos: true
+    kubeApiserverBurnrate: false
+    kubeApiserverHistogram: false
+    kubeApiserverSlos: false
     kubeControllerManager: true
     kubelet: true
     kubeProxy: true
@@ -95,13 +95,35 @@ defaultRules:
 
 ## Provide custom recording or alerting rules to be deployed into the cluster.
 ##
-additionalPrometheusRulesMap: {}
-#  rule-name:
-#    groups:
-#    - name: my_group
-#      rules:
-#      - record: my_record
-#        expr: 100 * my_record
+additionalPrometheusRulesMap:
+    activemq.rules:
+      groups:
+        - name: ActiveMQ-Rules
+          rules:
+            - alert: ActiveMQHighBrokerMemoryUsage
+              expr: max(org_apache_activemq_broker_memorypercentusage) > 90
+              for: 10m
+              labels:
+                severity: warning
+                instance: activemq-server
+              annotations:
+                summary: High memory usage on ActiveMQ broker
+                description: The memory usage of the ActiveMQ broker is above 90%
+                impact: The high memory usage may cause delays in message processing and delivery.
+
+    activemq-node.rules:
+        groups:
+          - name: ActiveMQ-Node-Rules
+            rules:
+              - alert: ActiveMQNodedown
+                expr: up{job="activemq-node-exporter"} == 0
+                for: 0m
+                labels:
+                  severity: critical
+                  instance: instance {{ $labels.instance }}
+                annotations:
+                  summary: node down
+                  description: Failed to scrape for more than 2 minutes. Node seems down.
 
 ##
 global:
@@ -175,40 +197,64 @@ alertmanager:
   ##
   config:
     global:
-      resolve_timeout: 5m
-    inhibit_rules:
-      - source_matchers:
-          - 'severity = critical'
-        target_matchers:
-          - 'severity =~ warning|info'
-        equal:
-          - 'namespace'
-          - 'alertname'
-      - source_matchers:
-          - 'severity = warning'
-        target_matchers:
-          - 'severity = info'
-        equal:
-          - 'namespace'
-          - 'alertname'
-      - source_matchers:
-          - 'alertname = InfoInhibitor'
-        target_matchers:
-          - 'severity = info'
-        equal:
-          - 'namespace'
+      opsgenie_api_url: "https://api.opsgenie.com/"
     route:
-      group_by: ['namespace']
+      group_by: ['alertname', 'severity']
       group_wait: 30s
-      group_interval: 5m
-      repeat_interval: 12h
-      receiver: 'null'
+      group_interval: 1m
+      repeat_interval: 1d
+      receiver: discord
+  
       routes:
-      - receiver: 'null'
-        matchers:
-          - alertname =~ "InfoInhibitor|Watchdog"
+        - receiver: discord
+          match_re:
+            severity: critical|warning
+          continue: true
+        - receiver: warning-alert
+          match: 
+            severity: warning
+          continue: true
+        - receiver: critical-alert
+          match: 
+            severity: critical
+          continue: true
+
     receivers:
-    - name: 'null'
+    - name: warning
+      opsgenie_configs:
+      - api_key: 495c70f6-6cd6-4d4c-989b-6d2c760dbabc
+        message: |-
+          {{ range .Alerts }}{{ .Labels.alertname }} is {{ .Labels.severity }} {{ end }}
+        description: |-
+          {{ range .Alerts }}
+          <b>Alert:</b> {{ .Annotations.summary }} {{ .Labels.alertname }} - {{ .Labels.severity }}
+          <b>Instance name:</b> {{ .Labels.name }} {{ .Labels.instancename }} {{ .Labels.instance }} {{ .Labels.pod }}
+          <b>Description:</b> {{ .Annotations.description }} {{ .Annotations.message }} {{ .Annotations.runbook_url }}
+          <b>Alert name:</b> {{ .Labels.alertname }}
+          {{ end }}
+   #      send_resolved: true
+        responders:
+        - name: warning_alert_Prometheus
+          type: team
+    - name: tmsb_prod_team_warning
+      opsgenie_configs:
+      - api_key: 495c70f6-6cd6-4d4c-989b-6d2c760dbabc
+        message: |-
+          {{ range .Alerts }} {{ .Labels.alertname }} is {{ .Labels.severity }} {{ end }}
+        description: |-
+          {{ range .Alerts }}
+          <b>Alert:</b> {{ .Annotations.summary }} {{ .Labels.alertname }} - {{ .Labels.severity }}
+          <b>Instance name:</b> {{ .Labels.name }} {{ .Labels.instancename }} {{ .Labels.instance }} {{ .Labels.pod }}
+          <b>Description:</b> {{ .Annotations.description }} {{ .Annotations.message }} {{ .Annotations.runbook_url }}
+          <b>Alert name:</b> {{ .Labels.alertname }}
+          {{ end }}
+        send_resolved: true
+        responders:
+        - name: critical_alert_Prometheus
+          type: team
+    - name: discord
+      discord_configs:
+      - webhook_url: 'https://discord.com/api/webhooks/1087983248820416616/tF6itovsqx-6dWRPdpIrEIbuY738aK6e'
     templates:
     - '/etc/alertmanager/config/*.tmpl'
 
@@ -265,9 +311,9 @@ alertmanager:
     # ingressClassName: nginx
 
     annotations:
+      external-dns.alpha.kubernetes.io/hostname: alertmanager.wfm.staging.internal
       kubernetes.io/ingress.class: nginx-internal
-      external-dns.alpha.kubernetes.io/hostname: alertmanager.wfm.dev.internal
-
+      
     labels: {}
 
     ## Redirect ingress to an additional defined port on the service
@@ -276,7 +322,7 @@ alertmanager:
     ## Hosts must be provided if Ingress is enabled.
     ##
     hosts:
-      - alertmanager.wfm.dev.internal
+      - alertmanager.wfm.staging.internal
 
     ## Paths to use for ingress rules - one path should match the alertmanagerSpec.routePrefix
     ##
@@ -285,7 +331,7 @@ alertmanager:
 
     ## For Kubernetes >= 1.18 you should specify the pathType (determines how Ingress paths should be matched)
     ## See https://kubernetes.io/blog/2020/04/02/improvements-to-the-ingress-api-in-kubernetes-1.18/#better-path-matching-with-path-types
-    # pathType: ImplementationSpecific
+    pathType: Prefix
 
     ## TLS configuration for Alertmanager Ingress
     ## Secret must be manually created in the namespace
@@ -575,7 +621,7 @@ alertmanager:
 
     ## Log level for Alertmanager to be configured with.
     ##
-    logLevel: info
+    logLevel: debug
 
     ## Size is the expected size of the alertmanager cluster. The controller will eventually make the size of the
     ## running cluster equal to the expected size.
@@ -770,7 +816,7 @@ grafana:
   ##
   defaultDashboardsTimezone: utc
 
-  adminPassword: prom-operator
+  adminPassword: admin
 
   rbac:
     ## If true, Grafana PSPs will be created
@@ -789,10 +835,9 @@ grafana:
 
     ## Annotations for Grafana Ingress
     ##
-    annotations:
+    annotations: {}
+      external-dns.alpha.kubernetes.io/hostname: grafana.wfm.staging.internal
       kubernetes.io/ingress.class: nginx-internal
-      external-dns.alpha.kubernetes.io/hostname: grafana.wfm.dev.internal
-      # kubernetes.io/tls-acme: "true"
 
     ## Labels to be added to the Ingress
     ##
@@ -804,8 +849,8 @@ grafana:
     # hosts:
     #   - grafana.domain.com
     hosts:
-      - grafana.wfm.dev.internal
-
+      - grafana.wfm.staging.internal
+      
     ## Path for grafana ingress
     path: /
 
@@ -2490,9 +2535,8 @@ prometheus:
     # ingressClassName: nginx
 
     annotations:
+      external-dns.alpha.kubernetes.io/hostname: prometheus.wfm.staging.internal
       kubernetes.io/ingress.class: nginx-internal
-      external-dns.alpha.kubernetes.io/hostname: prometheus.wfm.dev.internal
-    
     labels: {}
 
     ## Redirect ingress to an additional defined port on the service
@@ -2504,8 +2548,7 @@ prometheus:
     # hosts:
     #   - prometheus.domain.com
     hosts:
-      - prometheus.wfm.dev.internal
-
+      prometheus.wfm.staging.internal
     ## Paths to use for ingress rules - one path should match the prometheusSpec.routePrefix
     ##
     paths:
@@ -2513,7 +2556,7 @@ prometheus:
 
     ## For Kubernetes >= 1.18 you should specify the pathType (determines how Ingress paths should be matched)
     ## See https://kubernetes.io/blog/2020/04/02/improvements-to-the-ingress-api-in-kubernetes-1.18/#better-path-matching-with-path-types
-    # pathType: ImplementationSpecific
+    pathType: Prefix
 
     ## TLS configuration for Prometheus Ingress
     ## Secret must be manually created in the namespace
