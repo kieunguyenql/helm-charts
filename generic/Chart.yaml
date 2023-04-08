@@ -1,9 +1,0 @@
-apiVersion: v2
-description: A chart for generic applications. Use this if you need to deploy something
-  without wanting to build a fully fledged new helm chart.
-maintainers:
-- name: morremeyer
-- name: ekeih
-name: generic
-type: application
-version: 6.0.0
