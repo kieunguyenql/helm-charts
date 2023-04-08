@@ -9,6 +9,9 @@ spec:
     server: https://kubernetes.default.svc
   project: default
   source:
+    helm:
+      valueFiles:
+        - values.yaml
     path: argocd-system-applications
     repoURL: git@github.com:kieunguyenql/helm-charts.git
     targetRevision: main
