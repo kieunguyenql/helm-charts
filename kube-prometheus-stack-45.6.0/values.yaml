@@ -2548,7 +2548,7 @@ prometheus:
     # hosts:
     #   - prometheus.domain.com
     hosts:
-      prometheus.wfm.staging.internal
+      - prometheus.wfm.staging.internal
     ## Paths to use for ingress rules - one path should match the prometheusSpec.routePrefix
     ##
     paths:
