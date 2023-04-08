@@ -9,6 +9,9 @@ spec:
     server: {{ .Values.spec.destination.server }}
   project: default
   source:
+    helm:
+    valueFiles:
+      - values.yaml
     path: kube-prometheus-stack-45.6.0
     repoURL: git@github.com:kieunguyenql/helm-charts.git
     targetRevision: main
