@@ -5,7 +5,7 @@ metadata:
   namespace: kube-controller
 spec:
   destination:
-    namespace: kube-system
+    namespace: system-monitoring
     server: {{ .Values.spec.destination.server }}
   project: default
   source:
@@ -15,3 +15,8 @@ spec:
     path: kube-prometheus-stack-45.6.0
     repoURL: git@github.com:kieunguyenql/helm-charts.git
     targetRevision: main
+  syncPolicy:
+    automated:
+      prune: true
+    syncOptions:
+      - CreateNamespace=true
